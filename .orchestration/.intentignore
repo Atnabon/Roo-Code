@@ -1,0 +1,32 @@
+# .intentignore — Patterns to exclude from intent tracking
+# Similar to .gitignore, files matching these patterns will not
+# trigger scope violations or trace recordings.
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+out/
+*.js.map
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Environment files
+.env
+.env.local

@@ -1,0 +1,35 @@
+active_intents:
+    - id: "INT-001"
+      name: "Build Weather API"
+      status: "IN_PROGRESS"
+      owned_scope:
+          - "src/api/weather/**"
+      constraints:
+          - "Must use OpenWeather API"
+          - "Must handle errors gracefully"
+      acceptance_criteria:
+          - "All endpoints return 200 OK"
+          - "Unit tests pass"
+
+    - id: "INT-002"
+      name: "Refactor Auth Middleware"
+      status: "PENDING"
+      owned_scope:
+          - "src/auth/**"
+      constraints:
+          - "Maintain backward compatibility"
+          - "Must not use external providers"
+      acceptance_criteria:
+          - "Tests in tests/auth/ pass"
+
+    - id: "INT-003"
+      name: "Add Logging System"
+      status: "PENDING"
+      owned_scope:
+          - "src/utils/logging/**"
+      constraints:
+          - "Use structured JSON logging"
+          - "No blocking on IO"
+      acceptance_criteria:
+          - "Logs nyecreated for API calls"
+          - "Unit tests pass"

@@ -675,6 +675,25 @@ export async function presentAssistantMessage(cline: Task) {
 				}
 			}
 
+			// Fire pre-hooks before tool execution (Intent-Driven Architecture enforcement)
+			const hookStartTime = Date.now()
+			if (!block.partial && cline.hookEngine) {
+				try {
+					await cline.hookEngine.runPreHooks(block.name, {
+						params: block.params,
+						nativeArgs: block.nativeArgs,
+						toolCallId: block.id,
+					})
+				} catch (hookError: any) {
+					// Return structured error to LLM so it can self-correct
+					// (e.g., select an intent before writing, or re-read a stale file)
+					console.warn(`[HookEngine] PreHook blocked: ${hookError.message}`)
+					pushToolResult(formatResponse.toolError(`[HookEngine] ${hookError.message}`))
+					cline.didAlreadyUseTool = true
+					break
+				}
+			}
+
 			switch (block.name) {
 				case "write_to_file":
 					await checkpointSaveAndMark(cline)
@@ -914,6 +933,27 @@ export async function presentAssistantMessage(cline: Task) {
 						is_error: true,
 					})
 					break
+				}
+			}
+
+			// Fire post-hooks after tool execution
+			if (!block.partial && cline.hookEngine) {
+				try {
+					const duration_ms = Date.now() - hookStartTime
+					await cline.hookEngine.runPostHooks(
+						block.name,
+						{
+							params: block.params,
+							nativeArgs: block.nativeArgs,
+							toolCallId: block.id,
+						},
+						{
+							duration_ms,
+							error: cline.didRejectTool ? "Tool rejected by user" : null,
+						},
+					)
+				} catch (hookError: any) {
+					console.warn(`[HookEngine] PostHook error: ${hookError.message}`)
 				}
 			}
 

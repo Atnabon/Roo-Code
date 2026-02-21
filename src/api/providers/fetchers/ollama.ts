@@ -42,9 +42,14 @@ export const parseOllamaModel = (rawModel: OllamaModelInfoResponse): ModelInfo |
 	const contextWindow =
 		contextKey && typeof rawModel.model_info[contextKey] === "number" ? rawModel.model_info[contextKey] : undefined
 
-	// Filter out models that don't support tools. Models without tool capability won't work.
+	// Check if the model supports tools. Note: Cloud models may not report capabilities correctly.
 	const supportsTools = rawModel.capabilities?.includes("tools") ?? false
-	if (!supportsTools) {
+	const isCloudModel = rawModel.details?.families?.some((f) => f.includes("cloud")) ?? false
+
+	// For cloud models, we can't reliably determine tool support, so we allow them through
+	// but they may fail at runtime if they don't actually support tools
+	if (!supportsTools && !isCloudModel) {
+		console.debug(`Filtering out model without tool support: ${rawModel.details.family}`)
 		return null
 	}
 

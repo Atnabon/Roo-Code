@@ -41,7 +41,6 @@ function convertToOllamaMessages(anthropicMessages: Anthropic.Messages.MessagePa
 				)
 
 				// Process tool result messages FIRST since they must follow the tool use messages
-				const toolResultImages: string[] = []
 				toolMessages.forEach((toolMessage) => {
 					// The Anthropic SDK allows tool results to be a string or an array of text and image blocks, enabling rich and structured content. In contrast, the Ollama SDK only supports tool results as a single string, so we map the Anthropic tool result parts into one concatenated string to maintain compatibility.
 					let content: string
@@ -53,20 +52,16 @@ function convertToOllamaMessages(anthropicMessages: Anthropic.Messages.MessagePa
 							toolMessage.content
 								?.map((part) => {
 									if (part.type === "image") {
-										// Handle base64 images only (Anthropic SDK uses base64)
-										// Ollama expects raw base64 strings, not data URLs
-										if ("source" in part && part.source.type === "base64") {
-											toolResultImages.push(part.source.data)
-										}
-										return "(see following user message for image)"
+										return "(image content omitted)"
 									}
 									return part.text
 								})
 								.join("\n") ?? ""
 					}
+					// Tool results MUST use role "tool" for Ollama's native API
+					// Using "user" role causes 500 Internal Server Error on subsequent requests
 					ollamaMessages.push({
-						role: "user",
-						images: toolResultImages.length > 0 ? toolResultImages : undefined,
+						role: "tool",
 						content: content,
 					})
 				})
@@ -234,13 +229,19 @@ export class NativeOllamaHandler extends BaseProvider implements SingleCompletio
 				chatOptions.num_ctx = this.options.ollamaNumCtx
 			}
 
+			// Convert and log tool information for debugging
+			const ollamaTools = this.convertToolsToOllama(metadata?.tools)
+			if (ollamaTools && ollamaTools.length > 0) {
+				console.debug(`[Ollama] Sending ${ollamaTools.length} tools to model ${modelId}`)
+			}
+
 			// Create the actual API request promise
 			const stream = await client.chat({
 				model: modelId,
 				messages: ollamaMessages,
 				stream: true,
 				options: chatOptions,
-				tools: this.convertToolsToOllama(metadata?.tools),
+				tools: ollamaTools,
 			})
 
 			let totalInputTokens = 0
@@ -315,6 +316,7 @@ export class NativeOllamaHandler extends BaseProvider implements SingleCompletio
 			// Enhance error reporting
 			const statusCode = error.status || error.statusCode
 			const errorMessage = error.message || "Unknown error"
+			const errorBody = error.error || error.response?.data || ""
 
 			if (error.code === "ECONNREFUSED") {
 				throw new Error(
@@ -324,6 +326,23 @@ export class NativeOllamaHandler extends BaseProvider implements SingleCompletio
 				throw new Error(
 					`Model ${this.getModel().id} not found in Ollama. Please pull the model first with: ollama pull ${this.getModel().id}`,
 				)
+			} else if (statusCode === 500) {
+				// 500 errors often indicate tool/function calling incompatibility with certain models
+				const modelId = this.getModel().id
+				const hasTools = metadata?.tools && metadata.tools.length > 0
+
+				if (hasTools) {
+					throw new Error(
+						`Ollama model '${modelId}' returned an internal server error. This often happens when a model doesn't fully support tool/function calling. ` +
+							`Try using a different model (e.g., llama3.2, qwen2.5, mistral) or check Ollama logs for details. ` +
+							`Error details: ${errorBody || errorMessage}`,
+					)
+				} else {
+					throw new Error(
+						`Ollama internal server error for model '${modelId}'. Check Ollama logs for details. ` +
+							`Error: ${errorBody || errorMessage}`,
+					)
+				}
 			}
 
 			console.error(`Ollama API error (${statusCode || "unknown"}): ${errorMessage}`)

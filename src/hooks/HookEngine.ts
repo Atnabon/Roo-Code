@@ -12,22 +12,38 @@ export class HookEngine {
 		this.postHooks.push(hook)
 	}
 
-	// Execute all PreHooks
-	private async executePreHooks(toolName: string, payload: any) {
+	// Execute all PreHooks with independent error boundaries
+	async runPreHooks(toolName: string, payload: any) {
 		for (const hook of this.preHooks) {
-			const result = await hook.preExecute(toolName, payload)
-			if (!result.success) {
-				throw new Error(`PreHook blocked execution: ${result.error}`)
+			try {
+				const result = await hook.preExecute(toolName, payload)
+				// If result is truthy (HookError), it's a deliberate block
+				if (result) {
+					throw new Error(`PreHook blocked: ${result.message}`)
+				}
+			} catch (err: any) {
+				// Re-throw deliberate blocking errors so caller can handle them
+				if (err instanceof Error && err.message.startsWith("PreHook blocked:")) {
+					throw err
+				}
+				// Isolate unexpected hook crashes — log and continue
+				console.warn(`[HookEngine] Hook crashed (isolated): ${err.message || err}`)
 			}
 		}
 	}
 
-	// Execute all PostHooks
-	private async executePostHooks(toolName: string, payload: any, result: any) {
+	// Execute all PostHooks with independent error boundaries
+	async runPostHooks(toolName: string, payload: any, result: any) {
 		for (const hook of this.postHooks) {
-			const postResult = await hook.postExecute(toolName, payload, result)
-			if (!postResult.success) {
-				console.warn(`PostHook reported issue: ${postResult.error}`)
+			try {
+				const postResult = await hook.postExecute(toolName, payload, result)
+				// If postResult is truthy (HookError), log the issue
+				if (postResult) {
+					console.warn(`[HookEngine] PostHook reported: ${postResult.message}`)
+				}
+			} catch (err: any) {
+				// PostHook errors should never block tool execution — log and continue
+				console.warn(`[HookEngine] PostHook crashed (isolated): ${err.message || err}`)
 			}
 		}
 	}
@@ -35,7 +51,7 @@ export class HookEngine {
 	// Main method to wrap tool execution
 	async executeWithHooks(toolName: string, payload: any, actualToolFn: (payload: any) => Promise<any>) {
 		// 1️⃣ Run pre-hooks
-		await this.executePreHooks(toolName, payload)
+		await this.runPreHooks(toolName, payload)
 
 		// 2️⃣ Execute the actual tool
 		let toolResult
@@ -46,7 +62,7 @@ export class HookEngine {
 		}
 
 		// 3️⃣ Run post-hooks
-		await this.executePostHooks(toolName, payload, toolResult)
+		await this.runPostHooks(toolName, payload, toolResult)
 
 		// 4️⃣ Return the final result
 		return toolResult

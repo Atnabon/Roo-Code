@@ -1,35 +1,56 @@
 active_intents:
     - id: "INT-001"
-      name: "Build Weather API"
-      status: "IN_PROGRESS"
+      name: "Implement Core Hook Engine"
+      status: "COMPLETED"
       owned_scope:
-          - "src/api/weather/**"
+          - "src/hooks/**"
       constraints:
-          - "Must use OpenWeather API"
-          - "Must handle errors gracefully"
+          - "Must use pipeline/interceptor pattern"
+          - "Must isolate error boundaries per hook"
       acceptance_criteria:
-          - "All endpoints return 200 OK"
-          - "Unit tests pass"
+          - "HookEngine executes pre and post hooks in order"
+          - "Failing hook does not crash the pipeline"
 
     - id: "INT-002"
-      name: "Refactor Auth Middleware"
-      status: "PENDING"
+      name: "Implement Phase 1 Handshake"
+      status: "IN_PROGRESS"
       owned_scope:
-          - "src/auth/**"
+          - "src/hooks/IntentSelectionHook.ts"
+          - "src/core/prompts/**"
+          - "src/core/task/Task.ts"
+          - "src/state-machine/**"
       constraints:
-          - "Maintain backward compatibility"
-          - "Must not use external providers"
+          - "Agent must call select_active_intent before any write"
+          - "Gatekeeper must block unsigned writes with structured error"
       acceptance_criteria:
-          - "Tests in tests/auth/ pass"
+          - "System prompt mandates handshake"
+          - "Context injection returns XML block"
+          - "Writes without intent are blocked"
 
     - id: "INT-003"
-      name: "Add Logging System"
-      status: "PENDING"
+      name: "Implement Phase 2 Security Middleware"
+      status: "IN_PROGRESS"
       owned_scope:
-          - "src/utils/logging/**"
+          - "src/hooks/ScopeEnforcementHook.ts"
+          - "src/hooks/HITLHook.ts"
+          - "src/hooks/WriteFileHook.ts"
       constraints:
-          - "Use structured JSON logging"
-          - "No blocking on IO"
+          - "Scope violations must return structured errors"
+          - "Tool classification must default to DESTRUCTIVE"
       acceptance_criteria:
-          - "Logs nyecreated for API calls"
-          - "Unit tests pass"
+          - "ScopeEnforcementHook blocks out-of-scope writes"
+          - "HITLHook classifies all tools correctly"
+          - "WriteFileHook updates intent_map.md on write"
+
+    - id: "INT-004"
+      name: "Implement Phase 4 Parallel Workflow"
+      status: "IN_PROGRESS"
+      owned_scope:
+          - "src/hooks/OptimisticLockHook.ts"
+          - ".orchestration/**"
+      constraints:
+          - "Use optimistic locking via SHA-256 hash comparison"
+          - "Stale files must block writes with re-read directive"
+      acceptance_criteria:
+          - "Concurrent edits are detected via hash mismatch"
+          - "CLAUDE.md receives lessons learned on recovery"

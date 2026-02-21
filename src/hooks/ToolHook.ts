@@ -5,7 +5,7 @@ export interface ToolHook {
 	preExecute(toolName: string, payload: any): Promise<void | HookError>
 
 	// Post-execution hook
-	postExecute(toolName: string, payload: any): Promise<void | HookError>
+	postExecute(toolName: string, payload: any, result?: any): Promise<void | HookError>
 
 	// Optionally classify the tool
 	classification?: ToolClassification

@@ -1,32 +1,41 @@
-# .intentignore — Patterns to exclude from intent tracking
-# Similar to .gitignore, files matching these patterns will not
-# trigger scope violations or trace recordings.
+# .intentignore
+# Patterns of files to exclude from Intent-Driven Architecture scope enforcement.
+# (Similar to .gitignore syntax)
 
 # Dependencies
 node_modules/
-.pnpm-store/
+bower_components/
 
 # Build artifacts
 dist/
+build/
 out/
-*.js.map
+bin/
+*.vsix
 
-# IDE files
+# IDE and system files
 .vscode/
 .idea/
-
-# OS files
 .DS_Store
 Thumbs.db
 
-# Test coverage
-coverage/
+# Logs
+*.log
 
-# Lock files
-pnpm-lock.yaml
-package-lock.json
-yarn.lock
+# Temp files
+tmp/
+temp/
+*.tmp
 
-# Environment files
-.env
-.env.local
+# VSC and Git
+.git/
+.svn/
+.hg/
+
+# Hidden files
+# .env
+# .env.local
+
+# Orchestration metadata (Allow these usually, but can be ignored if desired)
+# .orchestration/agent_trace.jsonl
+# .orchestration/intent_map.md

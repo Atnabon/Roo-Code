@@ -1,6 +1,6 @@
 import fs from "fs"
 import path from "path"
-import * as yaml from "js-yaml"
+import * as yaml from "yaml"
 
 export interface Intent {
 	id: string
@@ -25,7 +25,7 @@ export class IntentRegistry {
 			throw new Error(`active_intents.yaml not found at ${this.filePath}`)
 		}
 		const fileContents = fs.readFileSync(this.filePath, "utf8")
-		const data = yaml.load(fileContents) as { active_intents: Intent[] }
+		const data = yaml.parse(fileContents) as { active_intents: Intent[] }
 		if (!data || !Array.isArray(data.active_intents)) {
 			throw new Error("Invalid active_intents.yaml format")
 		}

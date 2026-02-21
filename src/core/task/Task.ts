@@ -132,6 +132,14 @@ import { AutoApprovalHandler, checkAutoApproval } from "../auto-approval"
 import { MessageManager } from "../message-manager"
 import { validateAndFixToolResultIds } from "./validateToolResultIds"
 import { mergeConsecutiveApiMessages } from "./mergeConsecutiveApiMessages"
+import { HookEngine } from "../../hooks/HookEngine"
+import { TraceLedgerHook } from "../../hooks/TraceLedgerHook"
+import { IntentSelectionHook } from "../../hooks/IntentSelectionHook"
+import { ScopeEnforcementHook } from "../../hooks/ScopeEnforcementHook"
+import { HITLHook } from "../../hooks/HITLHook"
+import { WriteFileHook } from "../../hooks/WriteFileHook"
+import { OptimisticLockHook } from "../../hooks/OptimisticLockHook"
+import { TurnStateMachine } from "../../state-machine/TurnStateMachine"
 
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
@@ -296,6 +304,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	toolRepetitionDetector: ToolRepetitionDetector
+	hookEngine: HookEngine
+	turnStateMachine: TurnStateMachine
 	rooIgnoreController?: RooIgnoreController
 	rooProtectedController?: RooProtectedController
 	fileContextTracker: FileContextTracker
@@ -540,6 +550,65 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.diffStrategy = new MultiSearchReplaceDiffStrategy()
 
 		this.toolRepetitionDetector = new ToolRepetitionDetector(this.consecutiveMistakeLimit)
+
+		// Initialize TurnStateMachine for intent-driven architecture
+		this.turnStateMachine = new TurnStateMachine()
+		this.turnStateMachine.startTurn(this.taskId)
+
+		// Initialize HookEngine with all hooks for the intent-code traceability system
+		this.hookEngine = new HookEngine()
+
+		const orchestrationDir = path.join(this.workspacePath, ".orchestration")
+
+		// Pre-hooks (executed in order before tool dispatch)
+		// 1. IntentSelectionHook: validates intent is selected (gatekeeper)
+		this.hookEngine.registerPreHook(
+			new IntentSelectionHook({
+				orchestrationDir: orchestrationDir,
+				turnStateMachine: this.turnStateMachine,
+				conversationId: this.taskId,
+			}),
+		)
+
+		// 2. ScopeEnforcementHook: validates file is in owned_scope
+		this.hookEngine.registerPreHook(
+			new ScopeEnforcementHook({
+				orchestrationDir: orchestrationDir,
+				turnStateMachine: this.turnStateMachine,
+				conversationId: this.taskId,
+				workspacePath: this.workspacePath,
+			}),
+		)
+
+		// 3. HITLHook: classifies tools and adds intent-aware logging
+		this.hookEngine.registerPreHook(new HITLHook())
+
+		// 4. OptimisticLockHook: detects stale files from parallel agents
+		const optimisticLockHook = new OptimisticLockHook({
+			workspacePath: this.workspacePath,
+			orchestrationDir: orchestrationDir,
+		})
+		this.hookEngine.registerPreHook(optimisticLockHook)
+		this.hookEngine.registerPostHook(optimisticLockHook) // Also post-hook for hash tracking
+
+		// Post-hooks (executed in order after tool completion)
+		// 1. WriteFileHook: SHA-256 hashing + intent_map.md updates
+		this.hookEngine.registerPostHook(
+			new WriteFileHook({
+				orchestrationDir: orchestrationDir,
+				turnStateMachine: this.turnStateMachine,
+				conversationId: this.taskId,
+				workspacePath: this.workspacePath,
+			}),
+		)
+
+		// 2. TraceLedgerHook: appends to agent_trace.jsonl
+		const traceLedgerHook = new TraceLedgerHook({
+			sessionId: this.taskId,
+			modelIdentifier: getModelId(this.apiConfiguration) ?? "unknown",
+			orchestrationDir: orchestrationDir,
+		})
+		this.hookEngine.registerPostHook(traceLedgerHook)
 
 		// Initialize todo list if provided
 		if (initialTodos && initialTodos.length > 0) {

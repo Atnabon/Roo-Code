@@ -1,35 +1,43 @@
-# Roo Code Nervous System Mapping
+# Architecture Notes — Roo Code AI-Native IDE
 
-## 1. Tool Execution Entry Point
+## Executive Summary
 
-- Function: `execute_command(toolName, payload)`
-- Responsible for dispatching tools to Extension Host
-- Triggers Pre/Post Hooks
+Roo Code has been enhanced with a deterministic Hook System that transforms it into an AI-Native IDE. This system enforces a mandatory "Handshake" protocol (Intent → Code), ensures security via scope enforcement and HITL, and enables robust parallel orchestration.
 
-## 2. LLM Response Parsing
+## Core Component: Hook Engine
 
-- Function: `parseLLMResponse`
-- Converts raw LLM output into structured commands
-- Validates command schema
+The `HookEngine` implements a standard middleware/interceptor pattern. It wraps tool execution with sequential Pre-Hooks and Post-Hooks.
 
-## 3. write_file Execution
+### Execution Flow
 
-- Function: `write_file`
-- Writes content to disk
-- Handles async and error callbacks
+1.  **Tool Call**: LLM requests a tool (e.g., `write_to_file`).
+2.  **Pre-Hooks**:
+    - `IntentSelectionHook`: Gatekeeper ensures an intent is active.
+    - `ScopeEnforcementHook`: Authorizes the file target against `owned_scope`.
+    - `HITLHook`: Classifies operation and logs for potential human approval.
+    - `OptimisticLockHook`: Blocks stale writes (parallelism guard).
+3.  **Tool Execution**: Actual Roo Code logic runs.
+4.  **Post-Hooks**:
+    - `WriteFileHook`: Post-processes mutations (SHA-256 hashing).
+    - `TraceLedgerHook`: Records a persistent, hashed audit record in `agent_trace.jsonl`.
+    - `IntentMap`: Updates the feature-to-file mapping.
 
-## 4. System Prompt Construction
+## Data Model: Sidecar Storage
 
-- Function: `buildSystemPrompt`
-- Combines base instructions + user context
-- Injects session metadata
+The platform uses the `.orchestration/` directory for machine-managed state:
 
-## 5. Execution Flow (Simplified)
+- `active_intents.yaml`: Source of truth for intents, scopes, and constraints.
+- `agent_trace.jsonl`: Append-only immutable trace of all agent actions.
+- `intent_map.md`: High-level human-readable mapping of code to intents.
+- `CLAUDE.md`: Shared brain storing project context and lessons learned.
 
-1. User triggers a tool (e.g., "refactor auth middleware")
-2. `execute_command` receives request
-3. System prompt built via `buildSystemPrompt`
-4. LLM generates output
-5. Output parsed by `parseLLMResponse`
-6. `write_file` updates disk
-7. Post-Hook logs trace / updates internal state
+## Deterministic Protocol
+
+The reasoning loop is governed by the `TurnStateMachine`, which enforces a strict sequence:
+`AWAITING_INTENT_SELECTION` → `CONTEXT_LOADED` → `ACTION_ALLOWED` → `BLOCKED`.
+
+## Security & Reliability
+
+- **Scope Enforcement**: Glob-based patterns prevent accidental edits to sensitive areas.
+- **Optimistic Locking**: Prevents race conditions in multi-agent environments.
+- **Content Hashing**: Uses SHA-256 for spatial independence, ensuring traces are valid across environments.
